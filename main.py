@@ -9,7 +9,6 @@ import argparse
 import json
 import sys
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import modal
@@ -218,7 +217,10 @@ def process_chapters_parallel(
     max_workers: int = MAX_PARALLEL_CHAPTERS,
 ) -> tuple[int, int]:
     """
-    Process multiple chapters in parallel using ThreadPoolExecutor.
+    Process multiple chapters in parallel using Modal's native parallelism.
+
+    This uses Modal's .starmap() for true server-side parallelism, allowing
+    containers to scale up automatically based on workload.
 
     Args:
         chapters: List of chapters to process
@@ -235,6 +237,9 @@ def process_chapters_parallel(
     Returns:
         Tuple of (successful_count, failed_count)
     """
+    from pydub import AudioSegment
+    import io
+
     # Filter out already completed chapters
     pending_chapters = [ch for ch in chapters if ch.index not in completed]
     skipped_count = len(chapters) - len(pending_chapters)
@@ -245,53 +250,73 @@ def process_chapters_parallel(
     if not pending_chapters:
         return skipped_count, 0
 
+    # Prepare all chapter data for Modal's starmap
+    print(f"🚀 Preparing {len(pending_chapters)} chapters for parallel processing...")
+    
+    chapter_args = []
+    chapter_metadata = []  # Track chapter info for saving results
+    
+    for chapter in pending_chapters:
+        chunks = chunk_text(chapter.content)
+        
+        if not chunks:
+            print(f"  ⚠️ Chapter {chapter.index}: No content to synthesize")
+            continue
+        
+        chunk_texts = [c.text for c in chunks]
+        paragraph_ends = [c.is_paragraph_end for c in chunks]
+        
+        # Estimate duration for logging
+        duration_mins = estimate_audio_duration(chunks)
+        print(f"  Chapter {chapter.index}: {len(chunks)} chunks, ~{duration_mins:.1f} min")
+        
+        chapter_args.append((
+            chunk_texts,
+            paragraph_ends,
+            speaker,
+            language,
+            instruct,
+            PAUSE_BETWEEN_CHUNKS_MS,
+            PAUSE_BETWEEN_PARAGRAPHS_MS,
+        ))
+        chapter_metadata.append({
+            "chapter": chapter,
+            "num_chunks": len(chunks),
+        })
+    
+    if not chapter_args:
+        return skipped_count, 0
+    
+    # Fan out to Modal - all chapters process in parallel!
+    print(f"\n🔥 Synthesizing {len(chapter_args)} chapters in parallel (up to {max_workers} concurrent)...")
+    
+    # Use Modal's starmap for server-side parallelism
+    results = list(service.synthesize_chapter.starmap(
+        chapter_args,
+        order_outputs=True,
+        return_exceptions=True,
+    ))
+    
+    # Process results and save files
     successful = skipped_count
     failed = 0
-
-    def process_single_chapter(chapter: Chapter) -> tuple[int, bool, str | None]:
-        """Process a single chapter and return (index, success, error_msg)."""
-        try:
-            output_path = process_chapter(
-                chapter=chapter,
-                service=service,
-                speaker=speaker,
-                language=language,
-                instruct=instruct,
-                output_dir=output_dir,
-                book_title=book_title,
-            )
-            if output_path:
-                progress_tracker.mark_completed(chapter.index)
-                return (chapter.index, True, None)
-            else:
-                return (chapter.index, False, "No content")
-        except Exception as e:
-            return (chapter.index, False, str(e))
-
-    print(f"Processing {len(pending_chapters)} chapters with {max_workers} workers...")
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all chapters
-        future_to_chapter = {
-            executor.submit(process_single_chapter, ch): ch
-            for ch in pending_chapters
-        }
-
-        # Process results as they complete
-        for future in as_completed(future_to_chapter):
-            chapter = future_to_chapter[future]
-            try:
-                chapter_index, success, error_msg = future.result()
-                if success:
-                    successful += 1
-                else:
-                    failed += 1
-                    if error_msg:
-                        print(f"  [Chapter {chapter_index}] Error: {error_msg}")
-            except Exception as e:
-                failed += 1
-                print(f"  [Chapter {chapter.index}] Unexpected error: {e}")
-
+    
+    for meta, result in zip(chapter_metadata, results):
+        chapter = meta["chapter"]
+        chapter_title = sanitize_filename(chapter.title)
+        filename = f"{chapter.index:03d}_{chapter_title}.mp3"
+        output_path = output_dir / filename
+        
+        if isinstance(result, Exception):
+            print(f"  ❌ Chapter {chapter.index}: Failed - {result}")
+            failed += 1
+        else:
+            # Save the MP3
+            output_path.write_bytes(result)
+            progress_tracker.mark_completed(chapter.index)
+            successful += 1
+            print(f"  ✅ Chapter {chapter.index}: {filename} ({len(result) / 1024 / 1024:.1f} MB)")
+    
     return successful, failed
 
 

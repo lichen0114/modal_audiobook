@@ -83,7 +83,7 @@ MODEL_CONFIG = {
 }
 
 # Text chunking settings
-MAX_CHUNK_LENGTH = 2000  # Maximum characters per chunk
+MAX_CHUNK_LENGTH = 1500  # Maximum characters per chunk (smaller = faster per-chunk)
 MIN_CHUNK_LENGTH = 100   # Minimum characters per chunk
 
 # Audio settings
@@ -91,7 +91,7 @@ PAUSE_BETWEEN_CHUNKS_MS = 500  # Pause between chunks in milliseconds
 PAUSE_BETWEEN_PARAGRAPHS_MS = 800  # Pause between paragraphs
 
 # Batch processing settings
-MAX_CHUNKS_PER_BATCH = 30  # Max chunks per Modal call to avoid timeouts
+MAX_CHUNKS_PER_BATCH = 50  # Max chunks per Modal call (increased for efficiency)
 
 # Parallel processing settings
-MAX_PARALLEL_CHAPTERS = 4  # Number of chapters to process concurrently
+MAX_PARALLEL_CHAPTERS = 10  # Match Modal GPU limit (10 T4s max)

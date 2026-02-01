@@ -41,9 +41,16 @@ audiobooks/
 
 # EPUB files (copyrighted content)
 *.epub
+*.pdf
+
+# Book directories (copyrighted content)
+unprocessed_book/
 
 # Progress files
 .progress.json
+
+# Log files
+*.log
 
 # OS files
 .DS_Store

@@ -81,6 +81,10 @@ def create_kokoro_image() -> modal.Image:
             "soundfile>=0.13.0",
             "pydub>=0.25.0",
         )
+        # Pre-download model during image build for faster cold starts
+        .run_commands(
+            "python -c \"from kokoro import KPipeline; KPipeline(lang_code='a')\""
+        )
     )
 
 
@@ -431,8 +435,8 @@ class ChatterboxTTSService:
     gpu="T4",  # T4 is sufficient for the 82M model and 46% cheaper than A10G
     timeout=1800,  # 30 minutes for large chapters
     volumes={MODEL_CACHE_PATH: model_cache},
-    scaledown_window=120,  # Auto-stop after 2 min idle
-    max_containers=8,  # More containers since T4 is cheaper
+    scaledown_window=60,  # Auto-stop after 1 min idle (faster cleanup for batch jobs)
+    max_containers=10,  # Match Modal GPU limit (10 T4s max)
 )
 class KokoroTTSService:
     """Text-to-Speech service using Kokoro-82M on Modal."""
