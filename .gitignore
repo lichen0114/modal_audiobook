@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.claude/
+
+# Generated output
+audiobooks/
+*.mp3
+*.wav
+
+# EPUB files (copyrighted content)
+*.epub
+
+# Progress files
+.progress.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Modal
+.modal/
